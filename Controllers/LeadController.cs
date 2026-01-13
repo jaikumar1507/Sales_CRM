@@ -1,7 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Dapper;
+using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Sales_CRM.Models;
 using Sales_CRM.Models.DTOs;
+using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
 
 namespace Sales_CRM.Controllers
 {
@@ -101,6 +104,35 @@ namespace Sales_CRM.Controllers
         }
 
         // =====================================================
+        // 🔍 SEARCH LEADS (FIXED)
+        // =====================================================
+        [HttpGet("search")]
+        public IActionResult SearchLeads([FromQuery] string query)
+        {
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
+
+            using var connection = new NpgsqlConnection(connStr);
+
+            var sql = @"
+                SELECT *
+                FROM leads
+                WHERE
+                    CAST(id AS TEXT) ILIKE '%' || @query || '%'
+                    OR name ILIKE '%' || @query || '%'
+                    OR email ILIKE '%' || @query || '%'
+                    OR phone ILIKE '%' || @query || '%'
+                    OR comments ILIKE '%' || @query || '%'
+                    OR tags ILIKE '%' || @query || '%'
+                ORDER BY created_at DESC
+                LIMIT 50;
+            ";
+
+            var leads = connection.Query(sql, new { query });
+
+            return Ok(leads);
+        }
+
+        // =====================================================
         // 2️⃣ CREATE NEW LEAD
         // =====================================================
         [HttpPost]
@@ -145,7 +177,7 @@ namespace Sales_CRM.Controllers
         }
 
         // =====================================================
-        // 3️⃣ VIEW LEAD DETAILS (CLICK LEAD NAME)
+        // 3️⃣ VIEW LEAD DETAILS
         // =====================================================
         [HttpGet("details")]
         public IActionResult GetLeadDetails([FromQuery] int leadId)
@@ -191,7 +223,7 @@ namespace Sales_CRM.Controllers
         }
 
         // =====================================================
-        // 4️⃣ EDIT LEAD (FROM VIEW PAGE)
+        // 4️⃣ UPDATE LEAD
         // =====================================================
         [HttpPut("update")]
         public IActionResult UpdateLead([FromBody] Lead lead)
@@ -251,7 +283,7 @@ namespace Sales_CRM.Controllers
         }
 
         // =====================================================
-        // 5️⃣ DELETE LEAD (FROM VIEW PAGE)
+        // 5️⃣ DELETE LEAD
         // =====================================================
         [HttpDelete("delete")]
         public IActionResult DeleteLead([FromQuery] int leadId)
