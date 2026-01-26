@@ -1,22 +1,28 @@
-﻿using Dapper;
+﻿using Microsoft.AspNetCore.Authorization;
+using Dapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Sales_CRM.Models;
 using Sales_CRM.Models.DTOs;
-using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 
 namespace Sales_CRM.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class LeadsController : ControllerBase
     {
         private readonly IConfiguration _configuration;
+        private readonly ILogger<LeadsController> _logger;
 
-        public LeadsController(IConfiguration configuration)
+        public LeadsController(IConfiguration configuration,
+                               ILogger<LeadsController> logger)
         {
             _configuration = configuration;
+            _logger = logger;
         }
 
         // =====================================================
@@ -29,6 +35,9 @@ namespace Sales_CRM.Controllers
             [FromQuery] string? source
         )
         {
+            _logger.LogInformation("GetLeadsList called | Status={Status}, Assigned={Assigned}, Source={Source}",
+                                   status, assigned, source);
+
             var connStr = _configuration.GetConnectionString("PostgresConnection");
             var leads = new List<LeadListDto>();
 
@@ -104,13 +113,14 @@ namespace Sales_CRM.Controllers
         }
 
         // =====================================================
-        // 🔍 SEARCH LEADS (FIXED)
+        // 🔍 SEARCH LEADS
         // =====================================================
         [HttpGet("search")]
         public IActionResult SearchLeads([FromQuery] string query)
         {
-            var connStr = _configuration.GetConnectionString("PostgresConnection");
+            _logger.LogInformation("SearchLeads called | Query={Query}", query);
 
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
             using var connection = new NpgsqlConnection(connStr);
 
             var sql = @"
@@ -128,7 +138,6 @@ namespace Sales_CRM.Controllers
             ";
 
             var leads = connection.Query(sql, new { query });
-
             return Ok(leads);
         }
 
@@ -138,8 +147,10 @@ namespace Sales_CRM.Controllers
         [HttpPost]
         public IActionResult CreateLead([FromBody] Lead lead)
         {
-            var connStr = _configuration.GetConnectionString("PostgresConnection");
+            _logger.LogInformation("CreateLead called | Name={Name}, Assigned={Assigned}",
+                                   lead.Name, lead.Assigned);
 
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
             using var conn = new NpgsqlConnection(connStr);
             conn.Open();
 
@@ -173,6 +184,8 @@ namespace Sales_CRM.Controllers
 
             cmd.ExecuteNonQuery();
 
+            _logger.LogInformation("Lead created successfully | Name={Name}", lead.Name);
+
             return Ok("New Lead created successfully");
         }
 
@@ -182,20 +195,23 @@ namespace Sales_CRM.Controllers
         [HttpGet("details")]
         public IActionResult GetLeadDetails([FromQuery] int leadId)
         {
-            var connStr = _configuration.GetConnectionString("PostgresConnection");
+            _logger.LogInformation("GetLeadDetails called | LeadId={LeadId}", leadId);
 
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
             using var conn = new NpgsqlConnection(connStr);
             conn.Open();
 
             string sql = "SELECT * FROM leads WHERE id = @id";
-
             using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@id", leadId);
 
             using var reader = cmd.ExecuteReader();
 
             if (!reader.Read())
+            {
+                _logger.LogWarning("Lead not found | LeadId={LeadId}", leadId);
                 return NotFound("Lead not found");
+            }
 
             var lead = new
             {
@@ -228,8 +244,9 @@ namespace Sales_CRM.Controllers
         [HttpPut("update")]
         public IActionResult UpdateLead([FromBody] Lead lead)
         {
-            var connStr = _configuration.GetConnectionString("PostgresConnection");
+            _logger.LogInformation("UpdateLead called | LeadId={LeadId}", lead.Id);
 
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
             using var conn = new NpgsqlConnection(connStr);
             conn.Open();
 
@@ -277,8 +294,12 @@ namespace Sales_CRM.Controllers
             int rows = cmd.ExecuteNonQuery();
 
             if (rows == 0)
+            {
+                _logger.LogWarning("Update failed | Lead not found | LeadId={LeadId}", lead.Id);
                 return NotFound("Lead not found");
+            }
 
+            _logger.LogInformation("Lead updated successfully | LeadId={LeadId}", lead.Id);
             return Ok("Lead updated successfully");
         }
 
@@ -288,21 +309,25 @@ namespace Sales_CRM.Controllers
         [HttpDelete("delete")]
         public IActionResult DeleteLead([FromQuery] int leadId)
         {
-            var connStr = _configuration.GetConnectionString("PostgresConnection");
+            _logger.LogInformation("DeleteLead called | LeadId={LeadId}", leadId);
 
+            var connStr = _configuration.GetConnectionString("PostgresConnection");
             using var conn = new NpgsqlConnection(connStr);
             conn.Open();
 
             string sql = "DELETE FROM leads WHERE id = @id";
-
             using var cmd = new NpgsqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@id", leadId);
 
             int rows = cmd.ExecuteNonQuery();
 
             if (rows == 0)
+            {
+                _logger.LogWarning("Delete failed | Lead not found | LeadId={LeadId}", leadId);
                 return NotFound("Lead not found");
+            }
 
+            _logger.LogInformation("Lead deleted successfully | LeadId={LeadId}", leadId);
             return Ok("Lead deleted successfully");
         }
     }
